@@ -49,10 +49,16 @@ lib:
 clean:
 	rm -f $(shell find -name "*.o")
 	rm -f $(shell find -name "*.so")
+	rm -f $(shell find -name "*.gcno")
+	rm -f $(shell find -name "*.gcda")
+	rm -f $(shell find -name "*.gcov")
 	rm -rf $(BIN_DIR)
 
 distclean:
 	rm -f $(shell find -name "*.o")
 	rm -f $(shell find -name "*.so")
+	rm -f $(shell find -name "*.gcno")
+	rm -f $(shell find -name "*.gcda")
+	rm -f $(shell find -name "*.gcov")
 	rm -rf $(BIN_DIR)
 	

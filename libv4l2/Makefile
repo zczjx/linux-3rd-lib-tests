@@ -1,1 +1,1 @@
-obj-y += libv4l2_hello/
+obj-y += libv4l_dev_parse/
