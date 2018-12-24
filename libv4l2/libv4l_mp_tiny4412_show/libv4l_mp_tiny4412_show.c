@@ -29,6 +29,7 @@
 #include <fcntl.h>
 #include <libv4l2.h>
 #include <linux/videodev2.h>
+#include <linux/v4l2-subdev.h>
 #include <libv4l-plugin.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -86,6 +87,8 @@ int main(int argc, char **argv)
 	struct v4l2_buffer vbuf_param;
 	struct v4l2_requestbuffers req_bufs;
 	struct v4l2_input input;
+	struct v4l2_subdev_mbus_code_enum mbus_code;
+	struct v4l2_subdev_format subdev_format;
 	struct libv4l2_cap_buf v4l2_buf[LIBV4L2_BUF_NR];
 	struct libv4l2_param v4l2_param;
 	struct v4l2_plane mplane;
@@ -101,10 +104,15 @@ int main(int argc, char **argv)
 	char pixformat[32];
 	char *dev_path = NULL;
 	char *ret;
+	char *src_subdev = NULL, *sink_subdev = NULL;
+	int fd_src, fd_sink;
+	__u32 code;
+	
 
-	if(argc < 4)
+	if(argc < 6)
 	{
-		printf("usage: libv4l_dev_fps [dev_path] [xres] [yres]\n");
+		printf("usage: libv4l_tiny4412_show ");
+		printf("[dev_path] [src_subdev] [sink_subdev] [xres] [yres]\n");
 		return -1;
 
 	}
@@ -124,8 +132,10 @@ int main(int argc, char **argv)
 	g_datalist_init(&name_to_fmt_set);
 	fmt_to_name_set = g_tree_new(fmt_val_cmp);
 	dev_path = argv[1];
-	xres = atoi(argv[2]);
-	yres = atoi(argv[3]);
+	src_subdev = argv[2];
+	sink_subdev = argv[3];
+	xres = atoi(argv[4]);
+	yres = atoi(argv[5]);
 	init_v4l2_name_fmt_set(&name_to_fmt_set, fmt_to_name_set);
 	
     // Setup of the dec requests
@@ -223,6 +233,137 @@ renter:
 	printf("v4l2_param.xres: %d \n", v4l2_param.xres);
 	printf("v4l2_param.yres: %d \n", v4l2_param.yres);
 
+	fd_src = open(src_subdev, O_RDWR);
+
+	if(fd_src < 0)
+	{
+		return fd_src;
+	}
+
+	fd_sink = open(sink_subdev, O_RDWR);
+
+	if(fd_sink < 0)
+	{
+		return fd_sink;
+	}
+
+	memset(&mbus_code, 0, sizeof(struct v4l2_subdev_mbus_code_enum));
+
+	printf("--------enum v4l2 subdev source format-------------\n");
+	for(i = 0; i < 32; i++)
+	{
+		mbus_code.index = i;
+		err = v4l2_ioctl(fd_src, VIDIOC_SUBDEV_ENUM_MBUS_CODE, &mbus_code);
+	
+		if (err < 0)
+    	{
+			break;
+		}
+
+	
+		printf("[%s]: mbus_code.pad: %d \n", dev_path, mbus_code.pad);
+		printf("[%s]: mbus_code.index: %d \n", dev_path, mbus_code.index);
+		printf("[%s]: mbus_code.code: 0x%x \n", dev_path, mbus_code.code);
+		printf("\n");
+	}
+	printf("--------------------------------------\n");
+	printf("\n");
+	printf("--------enum v4l2 subdev sink format--------------\n");
+
+	for(i = 0; i < 32; i++)
+	{
+		mbus_code.index = i;
+		err = v4l2_ioctl(fd_sink, VIDIOC_SUBDEV_ENUM_MBUS_CODE, &mbus_code);
+	
+		if (err < 0)
+    	{
+			break;
+		}
+		
+		printf("[%s]: mbus_code.pad: %d \n", dev_path, mbus_code.pad);
+		printf("[%s]: mbus_code.index: %d \n", dev_path, mbus_code.index);
+		printf("[%s]: mbus_code.code: 0x%x \n", dev_path, mbus_code.code);
+		printf("\n");
+	}
+
+	printf("\n");
+	printf("please enter your mbus_code choice:  \n");
+	scanf("%x", &code);
+	printf("\n");
+	printf("your input mbus_code is 0x%x\n", code);
+
+	memset(&subdev_format, 0, sizeof(struct v4l2_subdev_format));
+	subdev_format.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	subdev_format.pad  = 0;
+	subdev_format.format.width = xres;
+	subdev_format.format.height = yres;
+	subdev_format.format.code = code;
+
+	err = v4l2_ioctl(fd_sink, VIDIOC_SUBDEV_S_FMT, &subdev_format);
+	
+	if (err < 0)
+	{
+		printf("fd_sink VIDIOC_SUBDEV_S_FMT failed err: %d\n", err);
+		return -1;
+	}
+
+	memset(&subdev_format, 0, sizeof(struct v4l2_subdev_format));
+	subdev_format.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	subdev_format.pad  = 0;
+	subdev_format.format.width = xres;
+	subdev_format.format.height = yres;
+	subdev_format.format.code = code;
+	err = v4l2_ioctl(fd_src, VIDIOC_SUBDEV_S_FMT, &subdev_format);
+	
+	if (err < 0)
+	{
+		printf("fd_src VIDIOC_SUBDEV_S_FMT failed err: %d\n", err);
+		return -1;
+	}
+
+	memset(&subdev_format, 0, sizeof(struct v4l2_subdev_format));
+	subdev_format.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	err = v4l2_ioctl(fd_src, VIDIOC_SUBDEV_G_FMT, &subdev_format);
+
+	printf("[%s]: subdev_format.which: %d \n", src_subdev, subdev_format.which);
+	printf("[%s]: subdev_format.pad: %d \n", src_subdev, subdev_format.pad);
+	printf("[%s]: subdev_format.format.width: %d \n", 
+		src_subdev, subdev_format.format.width);
+	printf("[%s]: subdev_format.format.height: %d \n", 
+		src_subdev, subdev_format.format.height);
+	printf("[%s]: subdev_format.format.code: 0x%x \n", 
+		src_subdev, subdev_format.format.code);
+	printf("[%s]: subdev_format.format.field: %d \n", 
+		src_subdev, subdev_format.format.field);
+	printf("[%s]: subdev_format.format.colorspace: %d \n", 
+		src_subdev, subdev_format.format.colorspace);
+	printf("[%s]: subdev_format.format.ycbcr_enc: %d \n", 
+		src_subdev, subdev_format.format.ycbcr_enc);
+	printf("[%s]: subdev_format.format.quantization: %d \n", 
+		src_subdev, subdev_format.format.quantization);
+
+	memset(&subdev_format, 0, sizeof(struct v4l2_subdev_format));
+	subdev_format.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	err = v4l2_ioctl(fd_sink, VIDIOC_SUBDEV_G_FMT, &subdev_format);
+		
+	printf("[%s]: subdev_format.which: %d \n", sink_subdev, subdev_format.which);
+	printf("[%s]: subdev_format.pad: %d \n", sink_subdev, subdev_format.pad);
+	printf("[%s]: subdev_format.format.width: %d \n", 
+		sink_subdev, subdev_format.format.width);
+	printf("[%s]: subdev_format.format.height: %d \n", 
+		sink_subdev, subdev_format.format.height);
+	printf("[%s]: subdev_format.format.code: 0x%x \n", 
+		sink_subdev, subdev_format.format.code);
+	printf("[%s]: subdev_format.format.field: %d \n", 
+		sink_subdev, subdev_format.format.field);
+	printf("[%s]: subdev_format.format.colorspace: %d \n", 
+		sink_subdev, subdev_format.format.colorspace);
+	printf("[%s]: subdev_format.format.ycbcr_enc: %d \n", 
+		sink_subdev, subdev_format.format.ycbcr_enc);
+	printf("[%s]: subdev_format.format.quantization: %d \n", 
+		sink_subdev, subdev_format.format.quantization);
+	
+
 	/* init buf */
 	memset(&req_bufs, 0, sizeof(struct v4l2_requestbuffers));
 	req_bufs.count = LIBV4L2_BUF_NR;
@@ -314,6 +455,8 @@ renter:
 		err = v4l2_ioctl(vfd, VIDIOC_QBUF, &vbuf_param);
 	}
 
+	close(fd_src);
+	close(fd_sink);
 	close(vfd);
     return 0;
 }
