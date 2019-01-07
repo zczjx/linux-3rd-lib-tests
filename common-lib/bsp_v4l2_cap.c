@@ -204,7 +204,6 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_cap_buf buf_arr[],
 {
 	struct v4l2_buffer v4l2_buf_param;
 	struct v4l2_requestbuffers req_bufs;
-	struct v4l2_create_buffers create_buffers;
 	struct v4l2_plane mplane;
 	int err, i = 0;
 
@@ -215,25 +214,6 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_cap_buf buf_arr[],
 
 	}
 
-	memset(&create_buffers, 0, sizeof(struct v4l2_create_buffers));
-	create_buffers.count = buf_count;
-	create_buffers.memory = V4L2_MEMORY_MMAP;
-	create_buffers.format.type = (mp_buf_flag ? 
-		V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE);
-	err = ioctl(fd, VIDIOC_G_FMT, &create_buffers.format);
-
-	if (err < 0)
-	{
-		printf("VIDIOC_G_FMT fail err: %d\n", err);
-	}
-
-    err = ioctl(fd, VIDIOC_CREATE_BUFS, &create_buffers);
-	
-    if (err) 
-    {
-    	printf("VIDIOC_CREATE_BUFS failed err: %d\n", err);     
-    }
-	
 	/* init buf */
 	memset(&req_bufs, 0, sizeof(struct v4l2_requestbuffers));
     req_bufs.count = buf_count;
