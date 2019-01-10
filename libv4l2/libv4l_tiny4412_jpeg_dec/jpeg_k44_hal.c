@@ -31,7 +31,7 @@
 #include <math.h>
 #include <sys/poll.h>
 
-#include "jpeg_hal.h"
+#include "jpeg_k44_hal.h"
         
 
 #ifdef JPEG_PERF_MEAS
@@ -91,33 +91,32 @@ static int jpeg_v4l2_s_fmt(int fd, enum v4l2_buf_type type, struct jpeg_config *
     int ret = 0;
 
     fmt.type = type;
-    fmt.fmt.pix_mp.width = config->width;
-    fmt.fmt.pix_mp.height = config->height;
-    fmt.fmt.pix_mp.field = V4L2_FIELD_ANY;
-    fmt.fmt.pix_mp.num_planes = config->num_planes;
+    fmt.fmt.pix.width = config->width;
+    fmt.fmt.pix.height = config->height;
+    fmt.fmt.pix.field = V4L2_FIELD_ANY;
 
     if (config->mode == JPEG_ENCODE)
-        fmt.fmt.pix_mp.colorspace = V4L2_COLORSPACE_JPEG;
+        fmt.fmt.pix.colorspace = V4L2_COLORSPACE_JPEG;
 
     switch (fmt.type) {
-    case V4L2_BUF_TYPE_VIDEO_OUTPUT:    /* fall through */
-    case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+    case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:    /* fall through */
+    case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
         break;
-    case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+    case V4L2_BUF_TYPE_VIDEO_OUTPUT:
         if (config->mode == JPEG_ENCODE) {
-            fmt.fmt.pix_mp.pixelformat = config->pix.enc_fmt.in_fmt;
+            fmt.fmt.pix.pixelformat = config->pix.enc_fmt.in_fmt;
         } else {
-            fmt.fmt.pix_mp.pixelformat = config->pix.dec_fmt.in_fmt;
-            fmt.fmt.pix_mp.plane_fmt[0].sizeimage = config->sizeJpeg;
+            fmt.fmt.pix.pixelformat = config->pix.dec_fmt.in_fmt;
+            fmt.fmt.pix.sizeimage = config->sizeJpeg;
         }
         break;
-    case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+    case V4L2_BUF_TYPE_VIDEO_CAPTURE:
         if (config->mode == JPEG_ENCODE) {
-            fmt.fmt.pix_mp.pixelformat = config->pix.enc_fmt.out_fmt;
+            fmt.fmt.pix.pixelformat = config->pix.enc_fmt.out_fmt;
         } else {
-            fmt.fmt.pix_mp.pixelformat = config->pix.dec_fmt.out_fmt;
-            fmt.fmt.pix_mp.width = config->scaled_width;
-            fmt.fmt.pix_mp.height = config->scaled_height;
+            fmt.fmt.pix.pixelformat = config->pix.dec_fmt.out_fmt;
+            fmt.fmt.pix.width = config->scaled_width;
+            fmt.fmt.pix.height = config->scaled_height;
         }
         break;
     default:
@@ -140,24 +139,24 @@ static int jpeg_v4l2_g_fmt(int fd, enum v4l2_buf_type type, struct jpeg_config *
     if (ret < 0)
         return -1;
 
-    config->width = fmt.fmt.pix_mp.width;
-    config->height = fmt.fmt.pix_mp.height;
+    config->width = fmt.fmt.pix.width;
+    config->height = fmt.fmt.pix.height;
 
     switch (fmt.type) {
-    case V4L2_BUF_TYPE_VIDEO_OUTPUT:    /* fall through */
-    case V4L2_BUF_TYPE_VIDEO_CAPTURE:
-        break;
-    case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-        if (config->mode == JPEG_ENCODE)
-            config->pix.enc_fmt.in_fmt = fmt.fmt.pix_mp.pixelformat;
-        else
-            config->pix.dec_fmt.in_fmt = fmt.fmt.pix_mp.pixelformat;
-        break;
+    case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:    /* fall through */
     case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+        break;
+    case V4L2_BUF_TYPE_VIDEO_OUTPUT:
         if (config->mode == JPEG_ENCODE)
-            config->pix.enc_fmt.out_fmt = fmt.fmt.pix_mp.pixelformat;
+            config->pix.enc_fmt.in_fmt = fmt.fmt.pix.pixelformat;
         else
-            config->pix.dec_fmt.out_fmt = fmt.fmt.pix_mp.pixelformat;
+            config->pix.dec_fmt.in_fmt = fmt.fmt.pix.pixelformat;
+        break;
+    case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+        if (config->mode == JPEG_ENCODE)
+            config->pix.enc_fmt.out_fmt = fmt.fmt.pix.pixelformat;
+        else
+            config->pix.dec_fmt.out_fmt = fmt.fmt.pix.pixelformat;
         break;
     default:
         printf("[%s]: invalid v4l2 buf type\n", __func__);
@@ -171,13 +170,13 @@ int jpeghal_getconfig(int fd, struct jpeg_config *config)
 {
     int ret = 0;
 
-    ret = jpeg_v4l2_g_fmt(fd, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, config);
+    ret = jpeg_v4l2_g_fmt(fd, V4L2_BUF_TYPE_VIDEO_OUTPUT, config);
     if (ret < 0) {
         printf("[%s]: input G_FMT failed\n", __func__);
         return -1;
     }
 
-    ret = jpeg_v4l2_g_fmt(fd, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, config);
+    ret = jpeg_v4l2_g_fmt(fd, V4L2_BUF_TYPE_VIDEO_CAPTURE, config);
     if (ret < 0)
         printf("[%s]: output G_FMT failed\n", __func__);
 
@@ -213,8 +212,6 @@ static int jpeg_v4l2_querybuf(int fd, struct jpeg_buf *buf)
     v4l2_buf.index = 0;
     v4l2_buf.type = buf->buf_type;
     v4l2_buf.memory = buf->memory;
-    v4l2_buf.length = buf->num_planes;
-    v4l2_buf.m.planes = plane;
 
     ret = ioctl(fd, VIDIOC_QUERYBUF, &v4l2_buf);
     if (ret < 0) {
@@ -223,10 +220,10 @@ static int jpeg_v4l2_querybuf(int fd, struct jpeg_buf *buf)
     }
 
     for (i= 0; i < buf->num_planes; i++) {
-        buf->length[i] = v4l2_buf.m.planes[i].length;
+        buf->length[i] = v4l2_buf.length;
         buf->start[i] = (char *) mmap(0, buf->length[i],
                     PROT_READ | PROT_WRITE, MAP_SHARED, fd,
-                    v4l2_buf.m.planes[i].m.mem_offset);
+                    v4l2_buf.m.offset);
 
         //LOGI("[%s]: buf.start[%d] = %p, length = %d", __func__, 0, buf->start[0], buf->length[0]);
         if (buf->start[0] == MAP_FAILED) {
@@ -251,15 +248,7 @@ static int jpeg_v4l2_qbuf(int fd, struct jpeg_buf *buf)
     v4l2_buf.index = 0;
     v4l2_buf.type = buf->buf_type;
     v4l2_buf.memory = buf->memory;
-    v4l2_buf.length = buf->num_planes;
-    v4l2_buf.m.planes = plane;
-
-    if (buf->memory == V4L2_MEMORY_USERPTR) {
-        for (i = 0; i < buf->num_planes; i++) {
-            v4l2_buf.m.planes[i].m.userptr = (unsigned long)buf->start[i];
-            v4l2_buf.m.planes[i].length = buf->length[i];
-        }
-    }
+	v4l2_buf.bytesused = buf->length[0];
 
     ret = ioctl(fd, VIDIOC_QBUF, &v4l2_buf);
     if (ret < 0) {
@@ -362,13 +351,13 @@ int jpeghal_dec_setconfig(int fd, struct jpeg_config *config)
 
     config->mode = JPEG_DECODE;
 
-    ret = jpeg_v4l2_s_fmt(fd, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, config);
+    ret = jpeg_v4l2_s_fmt(fd, V4L2_BUF_TYPE_VIDEO_OUTPUT, config);
     if (ret < 0) {
         printf("[%s]: decoder input S_FMT failed line: %d\n", __func__, __LINE__);
         return -1;
     }
 
-    ret = jpeg_v4l2_s_fmt(fd, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, config);
+    ret = jpeg_v4l2_s_fmt(fd, V4L2_BUF_TYPE_VIDEO_CAPTURE, config);
     if (ret < 0) {
         printf("[%s]: decoder output S_FMT failed line: %d\n", __func__, __LINE__);
         return -1;
@@ -426,7 +415,7 @@ int jpeghal_set_inbuf(int fd, struct jpeg_buf *buf)
 {
     int ret = 0;
 
-    buf->buf_type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+    buf->buf_type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 
     ret = jpeg_v4l2_reqbufs(fd, 1, buf);
     if (ret < 0) {
@@ -449,7 +438,7 @@ int jpeghal_set_outbuf(int fd, struct jpeg_buf *buf)
 {
     int ret = 0;
 
-    buf->buf_type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+    buf->buf_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 
     ret = jpeg_v4l2_reqbufs(fd, 1, buf);
     if (ret < 0) {

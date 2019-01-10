@@ -1,13 +1,13 @@
 /*******************************************************************************
 * Copyright (C), 2000-2019,  Electronic Technology Co., Ltd.
 *                
-* @filename: libv4l_k30_jpg_dec.c 
+* @filename: libv4l_k44_jpg_dec.c 
 *                
 * @author: Clarence.Zhou <zhou_chenz@163.com> 
 *                
 * @version:
 *                
-* @date: 2019-1-6    
+* @date: 2019-1-9    
 *                
 * @brief:          
 *                  
@@ -18,7 +18,6 @@
 *    
 * @comment           
 *******************************************************************************/
-
 #include <stdlib.h>
 #include <malloc.h>
 #include <string.h>
@@ -39,8 +38,7 @@
 #include <libswscale/swscale.h>  
 #include <libavutil/pixfmt.h> 
 #include <libavutil/imgutils.h>
-#include "videodev2_exynos_media.h"
-#include "jpeg_hal.h"
+#include "jpeg_k44_hal.h"
 #include "bsp_fb.h"
 #include "bsp_v4l2_cap.h"
 
@@ -141,7 +139,7 @@ int main(int argc, char **argv)
 	for(i = 0; i < LIBV4L2_MAX_FMT; i++)
 	{
 		fmtdsc.index = i;
-		fmtdsc.type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+		fmtdsc.type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
 		err = v4l2_ioctl(vfd, VIDIOC_ENUM_FMT, &fmtdsc);
 		
 		if (err < 0)
@@ -151,7 +149,7 @@ int main(int argc, char **argv)
 		}
 
 		printf("\n");
-		printf("------------V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE--------\n");
+		printf("------------V4L2_BUF_TYPE_VIDEO_OUTPUT--------\n");
 		printf("[%s]: fmt_dsc.index: %d \n", dev_path, fmtdsc.index);
 		printf("[%s]: fmt_dsc.type: 0x%x \n", dev_path, fmtdsc.type);
 		printf("[%s]: fmt_dsc.flags: 0x%x \n", dev_path, fmtdsc.flags);
@@ -164,7 +162,7 @@ int main(int argc, char **argv)
 	for(i = 0; i < LIBV4L2_MAX_FMT; i++)
 	{
 		fmtdsc.index = i;
-		fmtdsc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+		fmtdsc.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 		err = v4l2_ioctl(vfd, VIDIOC_ENUM_FMT, &fmtdsc);
 		
 		if (err < 0)
@@ -214,7 +212,7 @@ int main(int argc, char **argv)
 	dec_config.scaled_width = scaled_xres;
 	dec_config.scaled_height = scaled_yres;
 	dec_config.sizeJpeg = image_stat.st_size;
-	dec_config.pix.dec_fmt.in_fmt = V4L2_PIX_FMT_JPEG_444;
+	dec_config.pix.dec_fmt.in_fmt = V4L2_PIX_FMT_JPEG;
 	dec_config.pix.dec_fmt.out_fmt = V4L2_PIX_FMT_RGB32;
 	jpeghal_dec_setconfig(vfd, &dec_config);
 	jpeghal_dec_getconfig(vfd, &dec_config);
@@ -235,6 +233,7 @@ int main(int argc, char **argv)
 			image_stat.st_size, in_buf.length[0]);
 	memcpy(in_buf.start[0], image_addr, image_stat.st_size);
 	jpeghal_dec_exe(vfd, &in_buf, &out_buf);
+	v4l2_ioctl(vfd, VIDIOC_LOG_STATUS, NULL);
 	disp_frame.xres = v4l2_param.xres;
 	disp_frame.yres = v4l2_param.yres;
 	disp_frame.bits_per_pixel = fb_var_attr.bits_per_pixel;

@@ -38,8 +38,8 @@
 
 #include <linux/videodev2.h>
 
-#define JPEG_DEC_NODE        "/dev/video11"
-#define JPEG_ENC_NODE        "/dev/video12"
+#define JPEG_DEC_NODE        "/dev/video1"
+#define JPEG_ENC_NODE        "/dev/video0"
 
 #define JPEG_MAX_PLANE_CNT          3
 #define JPEG_DEC_OUT_BYTE_ALIGN     8
