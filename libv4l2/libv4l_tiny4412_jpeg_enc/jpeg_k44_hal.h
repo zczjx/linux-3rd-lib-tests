@@ -38,9 +38,6 @@
 
 #include <linux/videodev2.h>
 
-#define JPEG_DEC_NODE        "/dev/video1"
-#define JPEG_ENC_NODE        "/dev/video0"
-
 #define JPEG_MAX_PLANE_CNT          3
 #define JPEG_DEC_OUT_BYTE_ALIGN     8
 
@@ -126,6 +123,7 @@ struct jpeg_buf {
     int     num_planes;
     void    *start[JPEG_MAX_PLANE_CNT];
     int     length[JPEG_MAX_PLANE_CNT];
+	__u32 	*bytesused;
     enum    v4l2_memory    memory;
     enum    v4l2_buf_type  buf_type;    // Caller need not set this
 };
@@ -168,8 +166,8 @@ struct jpeg_config {
 #ifdef __cplusplus
 extern "C" {
 #endif
-int jpeghal_dec_init();
-int jpeghal_enc_init();
+int jpeghal_dec_init(char *dec_path);
+int jpeghal_enc_init(char *enc_path);
 
 int jpeghal_dec_setconfig(int fd, struct jpeg_config *config);
 int jpeghal_enc_setconfig(int fd, struct jpeg_config *config);
@@ -179,8 +177,10 @@ int jpeghal_enc_getconfig(int fd, struct jpeg_config *config);
 int jpeghal_set_inbuf(int fd, struct jpeg_buf *buf);
 int jpeghal_set_outbuf(int fd, struct jpeg_buf *buf);
 
-int jpeghal_dec_exe(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf);
-int jpeghal_enc_exe(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf);
+int jpeghal_dec_exe(int fd, struct jpeg_buf *in_buf, 
+	struct jpeg_buf *out_buf);
+int jpeghal_enc_exe(int fd, struct jpeg_buf *in_buf, 
+	struct jpeg_buf *out_buf);
 
 int jpeghal_deinit(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf);
 

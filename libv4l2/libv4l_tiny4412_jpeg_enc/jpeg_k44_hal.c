@@ -73,18 +73,6 @@ static int jpeg_v4l2_querycap(int fd)
     return ret;
 }
 
-static int jpeg_v4l2_s_jpegcomp(int fd, int quality)
-{
-    struct v4l2_jpegcompression arg;
-    int ret = 0;
-
-    arg.quality = quality;
-
-    ret = ioctl(fd, VIDIOC_S_JPEGCOMP, &arg);
-
-    return ret;
-}
-
 static int jpeg_v4l2_s_fmt(int fd, enum v4l2_buf_type type, struct jpeg_config *config)
 {
     struct v4l2_format fmt;
@@ -189,12 +177,9 @@ static int jpeg_v4l2_reqbufs(int fd, int buf_cnt, struct jpeg_buf *buf)
     int ret = 0;
 
     memset(&req, 0, sizeof(req));
-
     req.type = buf->buf_type;
     req.memory = buf->memory;
-
     req.count = buf_cnt;
-
     ret = ioctl(fd, VIDIOC_REQBUFS, &req);
 
     return ret;
@@ -259,22 +244,22 @@ static int jpeg_v4l2_qbuf(int fd, struct jpeg_buf *buf)
     return ret;
 }
 
-static int jpeg_v4l2_dqbuf(int fd, enum v4l2_buf_type type, enum v4l2_memory memory)
+static int jpeg_v4l2_dqbuf(int fd, struct jpeg_buf *buf)
 {
-    struct v4l2_buffer buf;
+    struct v4l2_buffer v4l2_buf;
     int ret = 0;
 
-    memset(&buf, 0, sizeof(struct v4l2_buffer));
+    memset(&v4l2_buf, 0, sizeof(struct v4l2_buffer));
+    v4l2_buf.type = buf->buf_type;
+    v4l2_buf.memory = buf->memory;
 
-    buf.type = type;
-    buf.memory = memory;
-
-    ret = ioctl(fd, VIDIOC_DQBUF, &buf);
+    ret = ioctl(fd, VIDIOC_DQBUF, &v4l2_buf);
     if (ret < 0) {
         printf("[%s:%d] DQBUF failed\n", __func__, ret);
         return -1;
     }
 
+	buf->bytesused = v4l2_buf.bytesused;
     return ret;
 }
 
@@ -304,12 +289,12 @@ static int jpeg_v4l2_streamoff(int fd, enum v4l2_buf_type type)
     return ret;
 }
 
-int jpeghal_dec_init()
+int jpeghal_dec_init(char *dec_path)
 {
     int fd;
     int ret = 0;
 
-    fd = open(JPEG_DEC_NODE, O_RDWR, 0);
+    fd = open(dec_path, O_RDWR);
 
     if (fd < 0) {
         printf("[%s]: JPEG dec open failed\n", __func__);
@@ -325,12 +310,12 @@ int jpeghal_dec_init()
     return fd;
 }
 
-int jpeghal_enc_init()
+int jpeghal_enc_init(char *enc_path)
 {
     int fd;
     int ret = 0;
 
-    fd = open(JPEG_ENC_NODE, O_RDWR, 0);
+    fd = open(enc_path, O_RDWR);
     if (fd < 0) {
         printf("[%s]: JPEG enc open failed\n", __func__);
         return -1;
@@ -378,22 +363,29 @@ int jpeghal_dec_getconfig(int fd, struct jpeg_config *config)
 int jpeghal_enc_setconfig(int fd, struct jpeg_config *config)
 {
     int ret = 0;
+	struct v4l2_control ctrl;
 
-    ret = jpeg_v4l2_s_jpegcomp(fd, config->enc_qual);
-    if (ret < 0) {
-        printf("[%s]: S_JPEGCOMP failed\n", __func__);
-        return -1;
-    }
+    config->mode = JPEG_ENCODE;
 
-    config->mode    = JPEG_ENCODE;
+	ctrl.id = V4L2_CID_JPEG_COMPRESSION_QUALITY;
+	ctrl.value = config->enc_qual;
 
-    ret = jpeg_v4l2_s_fmt(fd, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE, config);
+	ret = ioctl(fd, VIDIOC_S_CTRL, &ctrl);
+		
+	if(ret < 0)
+	{
+		printf("[%s]: encoder input V4L2_CID_JPEG_COMPRESSION_QUALITY failed\n", 
+				__func__);
+        return -1;	
+	}
+
+    ret = jpeg_v4l2_s_fmt(fd, V4L2_BUF_TYPE_VIDEO_OUTPUT, config);
     if (ret < 0) {
         printf("[%s]: encoder input S_FMT failed\n", __func__);
         return -1;
     }
 
-    ret = jpeg_v4l2_s_fmt(fd, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE, config);
+    ret = jpeg_v4l2_s_fmt(fd, V4L2_BUF_TYPE_VIDEO_CAPTURE, config);
     if (ret < 0) {
         printf("[%s]: encoder output S_FMT failed\n", __func__);
         return -1;
@@ -457,7 +449,8 @@ int jpeghal_set_outbuf(int fd, struct jpeg_buf *buf)
     return ret;
 }
 
-static int jpeg_exe(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf)
+static int jpeg_exe(int fd, struct jpeg_buf *in_buf,
+	struct jpeg_buf *out_buf)
 {
     int ret = 0;
 
@@ -466,7 +459,7 @@ static int jpeg_exe(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf)
         printf("[%s:%d]: Input QBUF failed\n", __func__, ret);
         return -1;
     }
-
+	
     ret = jpeg_v4l2_qbuf(fd, out_buf);
     if (ret < 0) {
         printf("[%s:%d]: Output QBUF failed\n", __func__, ret);
@@ -475,14 +468,14 @@ static int jpeg_exe(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf)
 
     ret = jpeg_v4l2_streamon(fd, in_buf->buf_type);
     ret = jpeg_v4l2_streamon(fd, out_buf->buf_type);
-
-    ret = jpeg_v4l2_dqbuf(fd, in_buf->buf_type, in_buf->memory);
-    ret = jpeg_v4l2_dqbuf(fd, out_buf->buf_type, out_buf->memory);
-
+    ret = jpeg_v4l2_dqbuf(fd, in_buf);
+    ret = jpeg_v4l2_dqbuf(fd, out_buf);
+	
     return ret;
 }
 
-int jpeghal_dec_exe(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf)
+int jpeghal_dec_exe(int fd, struct jpeg_buf *in_buf, 
+	struct jpeg_buf *out_buf)
 {
     int ret = 0;
 
@@ -493,7 +486,8 @@ int jpeghal_dec_exe(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf)
     return ret;
 }
 
-int jpeghal_enc_exe(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf)
+int jpeghal_enc_exe(int fd, struct jpeg_buf *in_buf, 
+	struct jpeg_buf *out_buf)
 {
     int ret = 0;
 
@@ -516,7 +510,7 @@ int jpeghal_deinit(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf)
     {
         for (i= 0; i < in_buf->num_planes; i++) {//jmq.for release memory,
             munmap((char *)(in_buf->start[i]), in_buf->length[i]);
-        }
+		}
     }
 
     if (out_buf->memory == V4L2_MEMORY_MMAP)
@@ -527,9 +521,8 @@ int jpeghal_deinit(int fd, struct jpeg_buf *in_buf, struct jpeg_buf *out_buf)
     }
 
     jpeg_v4l2_reqbufs(fd, 0, in_buf);
-
     jpeg_v4l2_reqbufs(fd, 0, out_buf);
-
+	v4l2_ioctl(fd, VIDIOC_LOG_STATUS, NULL);
     ret = close(fd);
 
     return ret;
