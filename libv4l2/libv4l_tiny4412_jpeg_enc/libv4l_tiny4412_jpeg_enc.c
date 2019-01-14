@@ -266,6 +266,11 @@ static void *snapshot_thread(void *arg)
 		
 		if('s' == cmd)
 		{
+			/* it is a workaround solution that open/close jpeg encode
+			   in each picture to WAR the linux-4.x encode driver stuck
+			   the system when continuous qbuf/dqbuf
+			*/
+
 			// Setup of the dec requests
 			vfd = jpeghal_enc_init(enc_path);
 			enc_config.mode = JPEG_ENCODE;
