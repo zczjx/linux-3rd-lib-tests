@@ -79,7 +79,7 @@ int main(int argc, char **argv)
 	struct v4l2_requestbuffers req_bufs;
 	struct pollfd fd_set[1];
 	int video_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	int i, err, pts = 0;
+	int i, buf_cnt, err, pts = 0;
 	int fps = 0;
 	char pixformat[32];
 	char *ret;
@@ -119,16 +119,30 @@ int main(int argc, char **argv)
 	printf("v4l2_param.pixelformat: 0x%x\n", v4l2_param.pixelformat);
 	printf("v4l2_param.xres: %d\n", v4l2_param.xres);
 	printf("v4l2_param.yres: %d\n", v4l2_param.yres);
-	err = bsp_v4l2_req_buf(fd_src, v4l2_buf, LIBV4L2_BUF_NR, (buf_mp_flag ?
+	buf_cnt = bsp_v4l2_req_buf(fd_src, v4l2_buf, LIBV4L2_BUF_NR, (buf_mp_flag ?
 			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE),
 			(buf_mp_flag ? 1 : 0));
 
-	if(err < 0)
+	if(buf_cnt < 0)
 	{
 		printf("bsp_v4l2_req_buf failed err: %d\n", err);
 		return -1;
 	}
-	
+
+	for(i = 0; i < buf_cnt; i++)
+	{
+		vbuf_param.index = i;
+		vbuf_param.type = (buf_mp_flag ? 
+			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE);
+		vbuf_param.memory = V4L2_MEMORY_MMAP;
+		err = bsp_v4l2_put_frame_buf(fd_src, &vbuf_param);
+		if(err < 0)
+		{
+			printf("bsp_v4l2_put_frame_buf err: %d, line: %d\n", err, __LINE__);
+			return -1;
+		}
+	}
+
 	err = bsp_v4l2_stream_on(fd_src, (buf_mp_flag ? 
 			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE));
 

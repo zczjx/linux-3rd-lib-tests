@@ -214,7 +214,7 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
 	{
 		mplane = malloc(planes_num * sizeof(struct v4l2_plane));
 	
-		for(i = 0; i < buf_count; i++)
+		for(i = 0; i < req_bufs.count; i++)
 		{
 			memset(&v4l2_buf_param, 0, sizeof(struct v4l2_buffer));
 			v4l2_buf_param.index = i;
@@ -239,14 +239,6 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
 							PROT_READ, MAP_SHARED, fd, 
 							v4l2_buf_param.m.planes[j].m.mem_offset);
 			}
-			
-			err = ioctl(fd, VIDIOC_QBUF, &v4l2_buf_param);
-			
-			if (err) 
-			{
-				printf("cannot VIDIOC_QBUF in mmap!\n");
-				return -1;
-        	}
 		}
 
 		if(NULL != mplane)
@@ -258,7 +250,7 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
 	}
 	else
 	{
-		for(i = 0; i < buf_count; i++)
+		for(i = 0; i < req_bufs.count; i++)
 		{
 			memset(&v4l2_buf_param, 0, sizeof(struct v4l2_buffer));
 			v4l2_buf_param.index = i;
@@ -278,18 +270,11 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
 			buf_arr[i].addr[0] = mmap(0 , v4l2_buf_param.length, 
 									PROT_READ, MAP_SHARED, fd, 
 									v4l2_buf_param.m.offset);
-			err = ioctl(fd, VIDIOC_QBUF, &v4l2_buf_param);
-			
-			if (err) 
-			{
-				printf("cannot VIDIOC_QBUF in mmap!\n");
-				return -1;
-        	}
 		}
 	}
 	
 	printf("bsp_v4l2_req_buf OK\n");
-	return 0;
+	return req_bufs.count;
 }
 
 int bsp_v4l2_get_frame(int fd, struct v4l2_buffer *buf_param, 
