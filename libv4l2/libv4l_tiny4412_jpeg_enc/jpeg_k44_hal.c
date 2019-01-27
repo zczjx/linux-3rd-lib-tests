@@ -468,6 +468,7 @@ static int jpeg_exe(int fd, struct jpeg_buf *in_buf,
 
     ret = jpeg_v4l2_streamon(fd, in_buf->buf_type);
     ret = jpeg_v4l2_streamon(fd, out_buf->buf_type);
+	ioctl(fd, VIDIOC_LOG_STATUS, NULL);
     ret = jpeg_v4l2_dqbuf(fd, in_buf);
     ret = jpeg_v4l2_dqbuf(fd, out_buf);
 	

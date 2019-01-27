@@ -50,23 +50,12 @@
 #define LIBV4L2_MAX_FMT (16)
 #define SWSCALE_PLANES_NR (4)
 
-typedef struct libv4l2_param {
-	__u32 xres;
-	__u32 yres;
-	__u32 pixelformat;
-	__u32 fps;
-} libv4l2_param;
-
-typedef struct libv4l2_cap_buf {
-	int bytes;
-	char *addr;
-} libv4l2_cap_buf;
-
+static int buf_mp_flag = 0;
 static int disp_fd = 0;
 static pthread_mutex_t snap_lock = PTHREAD_MUTEX_INITIALIZER;
 static int snapshot_run = 0;
 static struct bsp_v4l2_param v4l2_param;
-static struct libv4l2_cap_buf v4l2_buf[LIBV4L2_BUF_NR];
+static struct bsp_v4l2_buf v4l2_buf[LIBV4L2_BUF_NR];
 static struct v4l2_buffer vbuf_param;
 static int xres = 640;
 static int yres = 480;
@@ -77,7 +66,7 @@ static struct rgb_frame disp_frame = {
 };
 
 static int convert_to_disp_frame_fmt(struct rgb_frame *dst, 
-	struct libv4l2_cap_buf *src);
+	struct bsp_v4l2_buf *src);
 
 static void *snapshot_thread(void *arg);
 
@@ -89,7 +78,6 @@ int main(int argc, char **argv)
 	struct v4l2_fmtdesc fmtdsc;
 	struct v4l2_requestbuffers req_bufs;
 	struct pollfd fd_set[1];
-	int buf_mp_flag = 0;
 	int video_type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	int i, err, pts = 0;
 	int fps = 0;
@@ -125,12 +113,15 @@ int main(int argc, char **argv)
 	v4l2_param.pixelformat = V4L2_PIX_FMT_YUYV;
 	v4l2_param.xres = xres;
 	v4l2_param.yres = yres;
-	bsp_v4l2_try_setup(fd_src, &v4l2_param, buf_mp_flag);
+	bsp_v4l2_try_setup(fd_src, &v4l2_param, (buf_mp_flag ? 
+		V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE));
 	printf("v4l2_param.fps: %d\n", v4l2_param.fps);
 	printf("v4l2_param.pixelformat: 0x%x\n", v4l2_param.pixelformat);
 	printf("v4l2_param.xres: %d\n", v4l2_param.xres);
 	printf("v4l2_param.yres: %d\n", v4l2_param.yres);
-	err = bsp_v4l2_req_buf(fd_src, v4l2_buf, LIBV4L2_BUF_NR, buf_mp_flag);
+	err = bsp_v4l2_req_buf(fd_src, v4l2_buf, LIBV4L2_BUF_NR, (buf_mp_flag ?
+			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE),
+			(buf_mp_flag ? 1 : 0));
 
 	if(err < 0)
 	{
@@ -138,7 +129,8 @@ int main(int argc, char **argv)
 		return -1;
 	}
 	
-	err = bsp_v4l2_stream_on(fd_src, buf_mp_flag);
+	err = bsp_v4l2_stream_on(fd_src, (buf_mp_flag ? 
+			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE));
 
 	if(err < 0)
 	{
@@ -151,7 +143,9 @@ int main(int argc, char **argv)
 	
 	while(++pts <= 1000)
 	{
-		err = bsp_v4l2_get_frame(fd_src, &vbuf_param, buf_mp_flag);
+		err = bsp_v4l2_get_frame(fd_src, &vbuf_param, (buf_mp_flag ? 
+			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE),
+			(buf_mp_flag ? 1 : 0));
 		disp_frame.xres = xres;
 		disp_frame.yres = yres;
 		disp_frame.bits_per_pixel = fb_var_attr.bits_per_pixel;
@@ -162,6 +156,20 @@ int main(int argc, char **argv)
 		{
 			disp_frame.addr = malloc(disp_frame.bytes);
 		}
+
+		if(buf_mp_flag)
+		{
+			for(i = 0; i < 1; i++)
+			{
+				v4l2_buf[vbuf_param.index].bytes[i] = 
+					vbuf_param.m.planes[i].bytesused;
+			}
+		}
+		else
+		{
+			v4l2_buf[vbuf_param.index].bytes[0] = vbuf_param.bytesused;
+		}
+
 		
 		convert_to_disp_frame_fmt(&disp_frame, &v4l2_buf[vbuf_param.index]);
 		// memcpy(disp_frame.addr, out_buf.start[0], out_buf.length[0]);
@@ -172,14 +180,16 @@ int main(int argc, char **argv)
 	}
 	
 	snapshot_run = 0;
-	bsp_v4l2_stream_off(fd_src, buf_mp_flag);
+	bsp_v4l2_stream_off(fd_src, 
+		(buf_mp_flag ? 
+		V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE));
 	close(fd_src);
 	printf("jpeg enc finish return 0\n");
     return 0;
 }
 
 static int convert_to_disp_frame_fmt(struct rgb_frame *dst, 
-	struct libv4l2_cap_buf *src)
+	struct bsp_v4l2_buf *src)
 {
 	int ret = 0;
 	int i ,err; 
@@ -233,7 +243,7 @@ static int convert_to_disp_frame_fmt(struct rgb_frame *dst,
 		goto end;
 	}
 
-	memcpy(src_data[0], src->addr, src->bytes);
+	memcpy(src_data[0], src->addr[0], src->bytes[0]);
 	sws_scale(convert_ctx, src_data, src_linesize, 0, src_h, dst_data, dst_linesize);
 	memcpy(dst->addr, dst_data[0], (dst_bpp >> 3) * dst_w * dst_h);
 	ret = 0;
@@ -258,7 +268,7 @@ static void *snapshot_thread(void *arg)
 	char cmd;
 	char img_name[64];
 	char *enc_path = (char *) arg;
-
+	
 	while(1 == snapshot_run)
 	{
 		printf("enter 's' to do snapshot: \n");
@@ -290,26 +300,27 @@ static void *snapshot_thread(void *arg)
 			jpeghal_set_inbuf(vfd, &in_buf);
 			out_buf.memory = V4L2_MEMORY_MMAP;
 			out_buf.num_planes = 1;
-			jpeghal_set_outbuf(vfd, &out_buf);	
+			jpeghal_set_outbuf(vfd, &out_buf);
 			clock_gettime(CLOCK_MONOTONIC, &tp);
 			sprintf(img_name, "img%x%x.jpg", tp.tv_sec, tp.tv_nsec);
 			fd_img = open(img_name, O_CREAT | O_RDWR);
 			pthread_mutex_lock(&snap_lock);
-			memcpy(in_buf.start[0], v4l2_buf[vbuf_param.index].addr, 
-				v4l2_buf[vbuf_param.index].bytes);
+			memcpy(in_buf.start[0], v4l2_buf[vbuf_param.index].addr[0], 
+				v4l2_buf[vbuf_param.index].bytes[0]);
 			pthread_mutex_unlock(&snap_lock);
 			jpeghal_enc_exe(vfd, &in_buf, &out_buf);
-			v4l2_ioctl(vfd, VIDIOC_LOG_STATUS, NULL);
+			// v4l2_ioctl(vfd, VIDIOC_LOG_STATUS, NULL);
 			write(fd_img, out_buf.start[0], out_buf.bytesused);
 			close(fd_img);
 			jpeghal_deinit(vfd, &in_buf, &out_buf);
+			
 		}	
 		else
 		{
 			continue;
 		}
 	}
-	
+
 }
 
 
