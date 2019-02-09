@@ -35,10 +35,9 @@ int bsp_v4l2_open_dev(const char *dev_path, int *mp_buf_flag)
 	{
 		printf("%s NULL ptr dev_path \n", __FUNCTION__);
 		return -1;
-
 	}
 
-	vfd = open(dev_path, O_RDWR);
+	vfd = open(dev_path, O_RDWR | O_NONBLOCK);
 	
 	if (vfd < 0)
     {
@@ -57,12 +56,6 @@ int bsp_v4l2_open_dev(const char *dev_path, int *mp_buf_flag)
 	}
 
 	printf("[%s]: v4l2_cap.capabilities: 0x%x\n", dev_path, v4l2_cap.capabilities);
-	if(!((v4l2_cap.capabilities & V4L2_CAP_VIDEO_CAPTURE)
-	|| (v4l2_cap.capabilities & V4L2_CAP_VIDEO_CAPTURE_MPLANE)))
-	{
-		fprintf(stderr, "[%s]is not V4L2_CAP_VIDEO_CAPTURE\n", dev_path);
-		return -1;
-	}
 
 	if(v4l2_cap.capabilities & 
 	(V4L2_CAP_VIDEO_CAPTURE_MPLANE | V4L2_CAP_VIDEO_OUTPUT_MPLANE
@@ -105,7 +98,7 @@ int bsp_v4l2_try_setup(int fd, struct bsp_v4l2_param *val,
 {
 	struct v4l2_format v4l2_fmt;
 	struct v4l2_streamparm streamparm;
-	int err = 0;
+	int i, err = 0;
 
 	if(NULL == val)
 	{
@@ -124,6 +117,13 @@ int bsp_v4l2_try_setup(int fd, struct bsp_v4l2_param *val,
     	v4l2_fmt.fmt.pix_mp.width       = val->xres;
 		v4l2_fmt.fmt.pix_mp.height      = val->yres;
     	v4l2_fmt.fmt.pix_mp.field       = V4L2_FIELD_NONE;
+
+		for(i = 0; i < val->planes_num; i++)
+		{
+			v4l2_fmt.fmt.pix_mp.plane_fmt[i].sizeimage = val->req_buf_size[i];
+		}
+	
+		v4l2_fmt.fmt.pix_mp.num_planes = val->planes_num;
 	}
 	else
 	{
@@ -155,6 +155,11 @@ int bsp_v4l2_try_setup(int fd, struct bsp_v4l2_param *val,
 		val->pixelformat = v4l2_fmt.fmt.pix_mp.pixelformat;
     	val->xres = v4l2_fmt.fmt.pix_mp.width;
 		val->yres = v4l2_fmt.fmt.pix_mp.height;
+		val->planes_num = v4l2_fmt.fmt.pix_mp.num_planes;
+		for(i = 0; i < val->planes_num; i++)
+		{
+			val->req_buf_size[i] = v4l2_fmt.fmt.pix_mp.plane_fmt[i].sizeimage ;
+		}
 	}
 	else
 	{
@@ -203,9 +208,9 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
     req_bufs.memory = V4L2_MEMORY_MMAP;
     err = ioctl(fd, VIDIOC_REQBUFS, &req_bufs);
 	
-    if (err) 
+    if (err < 0) 
     {
-    	printf("req buf error!\n");
+    	printf("req buf err: %d, line %d\n", err, __LINE__);
         return -1;        
     }
 
@@ -213,6 +218,7 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
 	|| (V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE == buf_type))
 	{
 		mplane = malloc(planes_num * sizeof(struct v4l2_plane));
+		memset(mplane, 0x00, planes_num * sizeof(struct v4l2_plane));
 	
 		for(i = 0; i < req_bufs.count; i++)
 		{
@@ -234,9 +240,9 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
 
 			for(j = 0; j < planes_num; j++)
 			{
-				buf_arr[i].bytes[j] = v4l2_buf_param.m.planes[j].bytesused;
+				buf_arr[i].bytes[j] = v4l2_buf_param.m.planes[j].length;
 				buf_arr[i].addr[j] = mmap(0 , v4l2_buf_param.m.planes[j].length, 
-							PROT_READ, MAP_SHARED, fd, 
+							PROT_READ | PROT_WRITE, MAP_SHARED, fd, 
 							v4l2_buf_param.m.planes[j].m.mem_offset);
 			}
 		}
@@ -266,9 +272,9 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
         	}
 
 			buf_arr[i].planes_num = 0;
-			buf_arr[i].bytes[0] = v4l2_buf_param.bytesused;
+			buf_arr[i].bytes[0] = v4l2_buf_param.length;
 			buf_arr[i].addr[0] = mmap(0 , v4l2_buf_param.length, 
-									PROT_READ, MAP_SHARED, fd, 
+									PROT_READ | PROT_WRITE, MAP_SHARED, fd, 
 									v4l2_buf_param.m.offset);
 		}
 	}
@@ -277,10 +283,9 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
 	return req_bufs.count;
 }
 
-int bsp_v4l2_get_frame(int fd, struct v4l2_buffer *buf_param, 
+int bsp_v4l2_get_frame_buf(int fd, struct v4l2_buffer *buf_param, 
 	enum v4l2_buf_type buf_type, __u32 planes_num)
 {
-	struct pollfd fd_set[1];
 	int err = 0;
 
 	if(NULL == buf_param)
@@ -289,12 +294,7 @@ int bsp_v4l2_get_frame(int fd, struct v4l2_buffer *buf_param,
 		return -1;
 	
 	}
-
-	fd_set[0].fd     = fd;
-    fd_set[0].events = POLLIN;
-    err = poll(fd_set, 1, -1);
-
-	memset(buf_param, 0, sizeof(struct v4l2_buffer));
+	
     buf_param->type = buf_type;
     buf_param->memory = V4L2_MEMORY_MMAP;
 
@@ -304,17 +304,16 @@ int bsp_v4l2_get_frame(int fd, struct v4l2_buffer *buf_param,
 		if((buf_param->length != planes_num)
 		|| (NULL == buf_param->m.planes))
 		{
-			printf("please alloc mplanes in V4L2 mplane\n", __FUNCTION__, __LINE__);
+			printf("[%s]:[%d] please alloc mplanes in V4L2 mplane\n", __FUNCTION__, __LINE__);
 			return -1;
 		}
 	}
-	
-		
+
     err = ioctl(fd, VIDIOC_DQBUF, buf_param);
 		
 	if (err < 0) 
 	{
-		printf("cannot VIDIOC_DQBUF func: %s, line: %d\n", __FUNCTION__, __LINE__);
+		printf("VIDIOC_DQBUF func: err: %d [%s]:[%d]\n", err, __FUNCTION__, __LINE__);
 		return -1;
     }
 
@@ -336,7 +335,7 @@ int bsp_v4l2_put_frame_buf(int fd, struct v4l2_buffer *buf_param)
 	
 	if (err < 0) 
 	{
-		printf("cannot VIDIOC_QBUF \n");
+		printf("VIDIOC_QBUF func: err: %d [%s]:[%d]\n", err, __FUNCTION__, __LINE__);
 		return -1;
 	}
 

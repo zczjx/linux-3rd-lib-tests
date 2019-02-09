@@ -157,7 +157,12 @@ int main(int argc, char **argv)
 	
 	while(++pts <= 1000)
 	{
-		err = bsp_v4l2_get_frame(fd_src, &vbuf_param, (buf_mp_flag ? 
+		struct pollfd fd_set[1];
+
+		fd_set[0].fd = fd_src;
+		fd_set[0].events = POLLIN;
+		err = poll(fd_set, 1, -1);
+		err = bsp_v4l2_get_frame_buf(fd_src, &vbuf_param, (buf_mp_flag ? 
 			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE : V4L2_BUF_TYPE_VIDEO_CAPTURE),
 			(buf_mp_flag ? 1 : 0));
 		disp_frame.xres = xres;
@@ -184,9 +189,7 @@ int main(int argc, char **argv)
 			v4l2_buf[vbuf_param.index].bytes[0] = vbuf_param.bytesused;
 		}
 
-		
 		convert_to_disp_frame_fmt(&disp_frame, &v4l2_buf[vbuf_param.index]);
-		// memcpy(disp_frame.addr, out_buf.start[0], out_buf.length[0]);
 		pthread_mutex_lock(&snap_lock);
 		err = bsp_v4l2_put_frame_buf(fd_src, &vbuf_param);
 		pthread_mutex_unlock(&snap_lock);
