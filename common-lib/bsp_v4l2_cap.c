@@ -137,7 +137,7 @@ int bsp_v4l2_try_setup(int fd, struct bsp_v4l2_param *val,
 
 	if (err) 
 	{
-		printf("VIDIOC_TRY_FMT fail \n");
+		printf("VIDIOC_S_FMT fail [%s] line: [%d]\n", __func__, __LINE__);
 	
 	}
 
@@ -146,7 +146,7 @@ int bsp_v4l2_try_setup(int fd, struct bsp_v4l2_param *val,
 
 	if (err < 0)
 	{
-		printf("VIDIOC_G_FMT fail err: %d\n", err);
+		printf("VIDIOC_G_FMT fail err: %d [%s] line: [%d]\n", err, __func__, __LINE__);
 	}
 
 	if((V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE == buf_type)
@@ -178,7 +178,7 @@ int bsp_v4l2_try_setup(int fd, struct bsp_v4l2_param *val,
 	}
 	else
 	{
-		fprintf(stderr, "VIDIOC_G_PARM failed \n");
+		printf("VIDIOC_G_PARM failed [%s] line: [%d]\n", __func__, __LINE__);
 		val->fps = 15;
 	}
 	
@@ -207,10 +207,10 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
     req_bufs.type = buf_type;
     req_bufs.memory = V4L2_MEMORY_MMAP;
     err = ioctl(fd, VIDIOC_REQBUFS, &req_bufs);
-	
+
     if (err < 0) 
     {
-    	printf("req buf err: %d, line %d\n", err, __LINE__);
+    	printf("req buf err: %d [%s] line: %d\n", err, __func__, __LINE__);
         return -1;        
     }
 
@@ -279,7 +279,7 @@ int bsp_v4l2_req_buf(int fd, struct bsp_v4l2_buf buf_arr[],
 		}
 	}
 	
-	printf("bsp_v4l2_req_buf OK\n");
+	printf("bsp_v4l2_req_buf OK [%s] [%d]\n", __func__, __LINE__);
 	return req_bufs.count;
 }
 
