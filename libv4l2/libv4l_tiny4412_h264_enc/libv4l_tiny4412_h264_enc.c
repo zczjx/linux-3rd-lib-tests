@@ -867,15 +867,6 @@ static void *h264_record_thread(void *arg)
 			pthread_exit(-1);
 		}
 
-		/*******
-		output_buf[0].bytes[0] = nv12mt_frame.bytes[0];
-		output_buf[0].bytes[1] = nv12mt_frame.bytes[1];
-		memcpy(output_buf[0].addr[0], nv12mt_frame.addr[0], 
-		output_buf[0].bytes[0]);
-		memcpy(output_buf[0].addr[1], nv12mt_frame.addr[1], 
-				output_buf[0].bytes[1]);
-		********/
-
 		for(i = 0; i < nv12mt_frame.planes_num ; i++)
 		{	
 			enc_buf_param.m.planes[i].bytesused = output_buf[0].bytes[i];

@@ -294,7 +294,7 @@ int bsp_v4l2_get_frame_buf(int fd, struct v4l2_buffer *buf_param,
 		return -1;
 	
 	}
-	
+
     buf_param->type = buf_type;
     buf_param->memory = V4L2_MEMORY_MMAP;
 
@@ -397,6 +397,6 @@ void bsp_print_fps(const char *fsp_dsc, long *fps,
 		printf("%s fps: %d \n", fsp_dsc, *fps);
 		*pre_time = *curr_time;
 		*fps = 0;
-	}	
+	}
 }
 
