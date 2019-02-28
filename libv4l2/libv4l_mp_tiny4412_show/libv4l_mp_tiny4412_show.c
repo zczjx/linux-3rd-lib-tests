@@ -212,10 +212,11 @@ renter:
 
 	memset(&fmt, 0, sizeof(struct v4l2_format));
 	fmt.type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	fmt.fmt.pix.pixelformat = v4l2_param.pixelformat;
-	fmt.fmt.pix.width = xres;
-	fmt.fmt.pix.height = yres;
-	fmt.fmt.pix.field = V4L2_FIELD_ANY;
+	fmt.fmt.pix_mp.pixelformat = v4l2_param.pixelformat;
+	fmt.fmt.pix_mp.width = xres;
+	fmt.fmt.pix_mp.height = yres;
+	fmt.fmt.pix_mp.num_planes = 1;
+	fmt.fmt.pix_mp.field = V4L2_FIELD_ANY;
 	err = v4l2_ioctl(vfd, VIDIOC_S_FMT, &fmt);
 
 	if (err) 
